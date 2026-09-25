@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>امتحان البرمجة - دفعتي</title>
+
+<!-- Firebase (تخزين النتائج + منع التكرار + لوحة الإدارة) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<!-- EmailJS (إرسال إيميل تلقائي لكل نتيجة) -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+<style>
+  :root{
+    --bg1:#0f172a; --bg2:#1e293b; --accent:#6366f1; --accent2:#22d3ee;
+    --card:#111827; --text:#f1f5f9; --muted:#94a3b8; --ok:#22c55e; --bad:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:linear-gradient(160deg,var(--bg1),var(--bg2));color:var(--text);min-height:100vh;display:flex;justify-content:center;padding:24px 12px;}
+  .wrap{width:100%;max-width:680px;}
+  .card{background:var(--card);border-radius:18px;padding:26px 22px;box-shadow:0 10px 40px rgba(0,0,0,.4);border:1px solid #ffffff12;}
+  h1{font-size:1.4rem;margin:0 0 6px;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  p.sub{color:var(--muted);margin:0 0 20px;font-size:.9rem}
+  label{display:block;margin:14px 0 6px;font-size:.9rem;color:var(--muted)}
+  input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid #ffffff22;background:#0b1220;color:var(--text);font-size:1rem;}
+  input:focus{outline:2px solid var(--accent)}
+  button{margin-top:20px;width:100%;padding:13px;border:none;border-radius:12px;background:linear-gradient(90deg,var(--accent),var(--accent2));color:#0b1220;font-weight:700;font-size:1rem;cursor:pointer;}
+  button:hover{filter:brightness(1.1)}
+  button.secondary{background:#1f2937;color:var(--text)}
+  button.small{width:auto;margin:0;padding:6px 12px;font-size:.8rem}
+  .progress{height:6px;background:#1f2937;border-radius:4px;overflow:hidden;margin-bottom:18px}
+  .progress i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));}
+  .q{background:#0b1220;border:1px solid #ffffff14;border-radius:12px;padding:16px;margin-bottom:14px;}
+  .q .qtext{font-weight:600;margin-bottom:10px;line-height:1.5}
+  .opt{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;margin-bottom:6px;cursor:pointer;border:1px solid transparent}
+  .opt:hover{background:#ffffff08}
+  .opt.chosen{border-color:var(--accent);background:#6366f11a}
+  .opt.correct{border-color:var(--ok);background:#22c55e22}
+  .opt.wrong{border-color:var(--bad);background:#ef444422}
+  .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.75rem;font-weight:700;margin-left:6px}
+  .badge.ok{background:#22c55e33;color:#4ade80}
+  .badge.bad{background:#ef444433;color:#f87171}
+  .nav{display:flex;gap:10px}
+  .score-box{text-align:center;padding:24px 10px}
+  .score-box .num{font-size:2.6rem;font-weight:800;background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:12px}
+  th,td{padding:8px 6px;border-bottom:1px solid #ffffff14;text-align:right}
+  th{color:var(--muted);font-weight:600}
+  footer{text-align:center;color:#475569;font-size:.75rem;margin-top:18px}
+  a.admin-link{color:#475569;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card" id="app">جاري التحميل...</div>
+  <footer>Made by Esra 💫 &nbsp;·&nbsp; <a class="admin-link" href="#admin">لوحة الإدارة</a></footer>
+</div>
+
+<script>
+/* ======================================================================
+   1) إعدادات لازم تعبّيها إنتِ (كله copy/paste، مفيش برمجة مطلوبة)
+   ====================================================================== */
+
+// من Firebase Console > Project settings > بتحت خالص "SDK setup and configuration"
+const firebaseConfig = {
+  apiKey: "AIzaSyDxqnPhe3f_-1R8HhsiLSr08_EpN6zcoTM",
+  authDomain: "exam-6185b.firebaseapp.com",
+  databaseURL: "https://exam-6185b-default-rtdb.firebaseio.com",
+  projectId: "exam-6185b",
+  storageBucket: "exam-6185b.firebasestorage.app",
+  messagingSenderId: "696703445886",
+  appId: "1:696703445886:web:df89127adcc421fa99612f"
+};
+
+// من موقع emailjs.com (Public Key من Account، Service ID و Template ID من Email Services / Templates)
+const EMAILJS_PUBLIC_KEY  = "mAZDnb5u4qUh963v6";
+const EMAILJS_SERVICE_ID  = "service_sa9duf8";
+const EMAILJS_TEMPLATE_ID = "template_zd48cjb";
+const TEACHER_EMAIL = "Esrameliodase42@gmail.com";
+
+// باسورد لوحة الإدارة (غيّريه لأي حاجة تحبيها)
+const ADMIN_PASSWORD = "Meliodase2006";
+
+const PASS_PERCENT = 50;
+
+/* ======================================================================
+   2) تفعيل Firebase / EmailJS
+   ====================================================================== */
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+if (EMAILJS_PUBLIC_KEY.indexOf("PASTE") === -1) emailjs.init(EMAILJS_PUBLIC_KEY);
+
+function emailKey(email){ return email.trim().toLowerCase().replace(/[.#$\[\]]/g,'_'); }
+
+/* ======================================================================
+   3) بنك الأسئلة (56 سؤال / 3 صفحات)
+   ====================================================================== */
+const PAGES = [
+[
+["What is a program?",["A set of rules for physical hardware assembly","A set of written instructions that tell computer what to do","A collection of flowchart diagrams","A tool used only to design images"],1],
+["Which operation is performed by the Central Processing Unit (CPU)?",["Input","Output","Calculations and comparisons","Displaying text on monitor"],2],
+["Programs with syntax errors cannot:",["Be written in C++","Execute or run","Contain variables","Include comments"],1],
+["What is the pictorial representation of the logical steps taken to solve a problem called?",["Pseudocode","Flowchart","Compiler","Identifier"],1],
+["Which of the following is a valid character to start a C++ identifier with?",["Digit (0-9)","Hashtag (#)","Underscore (_)","Space character"],2],
+["Which of the following identifier names is INVALID in C++?",["2012Budget","InventoryItem","Class1","Budget2012"],0],
+["According to C++ coding conventions, a Constant identifier should be written as:",["Noun starting with lowercase","Verb starting with lowercase","All uppercase letters","Mixed case starting with digits"],2],
+["Which error type is detected by the compiler when syntax rules are violated?",["Logical error","Syntax error","Semantic error","Runtime error"],1],
+["What is the main function of #include <iostream> in a C++ program?",["It ends the main function","It is a header file library that lets us work with input and output objects","It declares variables","It converts C++ code into a flowchart"],1],
+["What character must be placed at the end of every C++ statement?",["Colon (:)","Semicolon (;)","Period (.)","Comma (,)"],1],
+["What is used to store a value and name a location in memory?",["Constant","Variable (Identifier)","Flowchart symbol","Header file"],1],
+["Which statement correctly declares multiple variables of the same type on one line?",["int age, group, number;","int age; double number;","int age, double pass;","double spec; home; data;"],0],
+["Which of the following assignment statements is VALID in C++?",["2 = number;","sum + 10 = sum;","number = 2;","10 = x;"],2],
+["What is the size in Bytes of the int data type?",["2 Bytes","4 Bytes","8 Bytes","1 Byte"],1],
+["What is the result of the integer division expression 13 / 5 in C++?",["2.6","3","2","0.4"],2],
+["Which operator has the HIGHEST precedence in C++ arithmetic expressions?",["+ and -","* and /","%","( )"],3],
+["Which object is used to accept keyboard input in C++?",["cout","cin","main","include"],1],
+["In a flowchart, which symbol is used for Input / Output operations?",["Oval (Rounded Rectangle)","Rectangle","Parallelogram","Diamond"],2],
+["In a flowchart, what does a Diamond symbol represent?",["Process","Boolean expression (Decision)","Call a function","Start / End"],1],
+["What is the output of the expression 13 % 5 (Modulus)?",["2","2.6","3","65"],2]
+],
+[
+["In a selection structure, which logical operator requires BOTH conditions to be true?",["|| (OR)","&& (AND)","! (NOT)","== (Equal)"],1],
+["In an if-else statement, if the condition is FALSE, which block of code executes?",["The if block","The else block","Both blocks","Neither block"],1],
+["Which operator is used in C++ for \"OR\" logic where only ONE condition needs to be true?",["&&","||","!=","=="],1],
+["What are the three essential steps that must occur in every loop structure?",["Declare, Input, Output","Initialization, Test condition, Update","Start, Process, End","If, Else, Switch"],1],
+["How many times will \"OK\" be printed: int x = 10; while (x <= 90) { cout << \"OK\"; x = x + 10; }?",["8 times","9 times","10 times","Infinite times"],1],
+["In a do-while loop, where is the condition tested?",["At the beginning of the loop","Inside the update statement","At the end of the loop","Before initialization"],2],
+["Which loop guarantees the body executes AT LEAST ONCE?",["while loop","for loop","do-while loop","if statement"],2],
+["Correct syntax header for a for loop that runs 5 times from n = 1?",["for (n = 1; n <= 5; n++)","for (n <= 5; n = 1; n++)","for (int n = 1 to 5)","for (n = 1; n = 5)"],0],
+["In a while loop flowchart, what happens when the test condition evaluates to FALSE?",["The loop updates the control variable","The loop repeats the statement","The execution exits the loop","The program stops immediately"],2],
+["Main difference between a while loop and a do-while loop?",["while tests the condition at the end, do-while tests it at the beginning","do-while executes the statements at least once before testing the condition","while cannot use counter variables","There is no difference between them"],1],
+["In while (count <= 10), which relational operator is used?",["=","<=","==","=>"],1],
+["In int list[10] = {};, what is the index for element 6?",["list[6]","list[5]","list[4]","list[7]"],1],
+["Given string names[] = {\"Ahmad\",\"Nasser\",\"khalid\",\"Omar\"}; output of cout << names[1];?",["Ahmad","Nasser","khalid","Omar"],1],
+["In a flowchart to calculate the average score of 10 students, which expression is correct?",["average = sum * 10","average = sum / count","average = sum / 10","average = score / 10"],2],
+["In while (number > 0), when does the loop terminate?",["When the user inputs a number greater than 0","When the user inputs 1","When the user inputs a number less than or equal to 0","It never terminates"],2],
+["double sales[] = {12.25, 32.50, 16.90, 23, 45.68}; — how is the array size determined?",["It is hardcoded to 10","By the number of values within the braces {}","By using the new operator","It cannot be determined automatically"],1],
+["Real estate pricing with 15% annual increase — correct formula for the increase?",["increase = price + 0.15","increase = price * 0.15","increase = price / 10","increase = year * 0.15"],1],
+["If list[3] = 10 and list[6] = 35, value of list[5] after list[5] = list[3] + list[6];?",["10","35","45","25"],2]
+],
+[
+["In int inStock[6][5];, what do 6 and 5 represent?",["6 columns and 5 rows","6 rows and 5 columns","6 elements total","11 dimensions"],1],
+["Value stored in sales[5][3] after sales[5][3] = 25.75;?",["0.0","5.3","25.75","10.0"],2],
+["When passing an array to a method, how are changes inside the method saved?",["They are temporary and lost when the method finishes","They cause a syntax error","They are permanent because arrays are passed by reference","They are saved only if returned explicitly"],2],
+["How do you pass myNumbers to void printArray(const int x[], int size)?",["printArray(myNumbers[], size);","printArray(myNumbers[0], size);","printArray(myNumbers, size);","printArray(int myNumbers, int size);"],2],
+["Which part of a function heading defines the variable types received?",["Return type","Function name","Formal parameters list","Method body"],2],
+["In max = larger(23.5, 37.8);, what are 23.5 and 37.8 called?",["Return values","Formal parameters","Arguments","Local variables"],2],
+["Which function declaration receives parameters but does NOT return a value?",["void with no parameters","void with parameters","returnType with no parameters","returnType with parameters"],1],
+["Which function type is used for input/print/modify tasks without returning a value?",["int function","double function","void function","bool function"],2],
+["Which function type is appropriate for arithmetic operations or comparisons to return a result?",["void function","ReturnType function (e.g., int, double, bool)","Parameterless void function","System function"],1],
+["What happens when a return statement executes inside a function?",["The function restarts from the beginning","Remaining statements are skipped and the function exits","The program terminates completely","It converts all local variables to global variables"],1],
+["What is a program?",["A set of rules for physical hardware assembly","A set of written instructions that tell computer what to do","A collection of flowchart diagrams","A tool used only to design images"],1],
+["Which operation is performed by the CPU?",["Input","Output","Calculations and comparisons","Displaying text on monitor"],2],
+["Programs with syntax errors cannot:",["Be written in C++","Execute or run","Contain variables","Include comments"],1],
+["Pictorial representation of the logical steps taken to solve a problem?",["Pseudocode","Flowchart","Compiler","Identifier"],1],
+["Valid character to start a C++ identifier with?",["Digit (0-9)","Hashtag (#)","Underscore (_)","Space character"],2],
+["Which identifier name is INVALID in C++?",["2012Budget","InventoryItem","Class1","Budget2012"],0],
+["A Constant identifier, by convention, should be written as:",["Noun starting with lowercase","Verb starting with lowercase","All uppercase letters","Mixed case starting with digits"],2],
+["Which error type is detected by the compiler when syntax rules are violated?",["Logical error","Syntax error","Semantic error","Runtime error"],1]
+]
+];
+const totalQ = PAGES.reduce((a,p)=>a+p.length,0);
+function offsetOf(pageIdx){let n=0;for(let i=0;i<pageIdx;i++)n+=PAGES[i].length;return n;}
+
+let state = { name:"", email:"", page:0, answers:{} };
+const app = document.getElementById("app");
+
+/* ======================================================================
+   4) التوجيه: صفحة امتحان أو لوحة إدارة
+   ====================================================================== */
+if (location.hash === "#admin") renderAdminLogin();
+else renderRegister();
+
+/* ---------------- تسجيل الطالب ---------------- */
+async function renderRegister(msg){
+  app.innerHTML = `
+    <h1>📝 امتحان البرمجة</h1>
+    <p class="sub">سجّل بياناتك للبدء (سؤال واحد لكل شخص)</p>
+    ${msg?`<p style="color:#f87171;font-size:.85rem">${msg}</p>`:""}
+    <label>الاسم رباعي</label>
+    <input id="rname" placeholder="مثال: أحمد محمد علي حسن">
+    <label>البريد الإلكتروني</label>
+    <input id="remail" type="email" placeholder="example@gmail.com">
+    <button id="startBtn">ابدأ الامتحان</button>
+  `;
+  document.getElementById("startBtn").onclick = async ()=>{
+    const name = document.getElementById("rname").value.trim();
+    const email = document.getElementById("remail").value.trim();
+    const parts = name.split(/\s+/).filter(Boolean);
+    if(parts.length < 4){ renderRegister("من فضلك اكتب الاسم رباعي كامل"); return; }
+    if(!/^\S+@\S+\.\S+$/.test(email)){ renderRegister("من فضلك اكتب بريد إلكتروني صحيح"); return; }
+
+    app.innerHTML = "<p>جاري التحقق...</p>";
+    try{
+      const snap = await db.ref('results/'+emailKey(email)).once('value');
+      const prev = snap.val();
+      if(prev && !prev.allowRetake){
+        renderRegister(`⚠️ الإيميل ده سلّم الامتحان قبل كده (الدرجة: ${prev.score}/${prev.total}). كلمي المسؤول لو محتاج إعادة.`);
+        return;
+      }
+    }catch(e){
+      // لو Firebase مش متظبط لسه، نكمل بدون تحقق
+    }
+    state.name = name; state.email = email; state.page = 0; state.answers = {};
+    renderExamPage();
+  };
+}
+
+/* ---------------- صفحات الامتحان ---------------- */
+function renderExamPage(){
+  const page = PAGES[state.page];
+  const offset = offsetOf(state.page);
+  const pct = Math.round((state.page/PAGES.length)*100);
+  let html = `<h1>صفحة ${state.page+1} من ${PAGES.length}</h1><div class="progress"><i style="width:${pct}%"></i></div>`;
+  page.forEach((q,i)=>{
+    const gi = offset+i;
+    html += `<div class="q"><div class="qtext">${gi+1}. ${q[0]}</div>`;
+    q[1].forEach((opt,oi)=>{
+      const checked = state.answers[gi]===oi ? "checked":"";
+      html += `<label class="opt ${checked?'chosen':''}"><input type="radio" name="q${gi}" value="${oi}" ${checked}><span>${opt}</span></label>`;
+    });
+    html += `</div>`;
+  });
+  html += `<div class="nav">${state.page>0?'<button class="secondary" id="prevBtn">السابق</button>':''}<button id="nextBtn">${state.page===PAGES.length-1?'تسليم الامتحان':'التالي'}</button></div>`;
+  app.innerHTML = html;
+
+  app.querySelectorAll('input[type=radio]').forEach(r=>{
+    r.addEventListener('change', e=>{ state.answers[parseInt(e.target.name.slice(1))] = parseInt(e.target.value); renderExamPage(); });
+  });
+  const prev = document.getElementById("prevBtn");
+  if(prev) prev.onclick = ()=>{ state.page--; renderExamPage(); };
+  document.getElementById("nextBtn").onclick = ()=>{
+    if(page.some((_,i)=>state.answers[offset+i]===undefined)){ alert("جاوبي على كل الأسئلة في الصفحة دي"); return; }
+    if(state.page===PAGES.length-1) submitExam(); else { state.page++; renderExamPage(); }
+  };
+}
+
+/* ---------------- التسليم ---------------- */
+async function submitExam(){
+  let score=0;
+  const allQ = PAGES.flat();
+  allQ.forEach((q,i)=>{ if(state.answers[i]===q[2]) score++; });
+
+  app.innerHTML = `<p>جاري إرسال النتيجة...</p>`;
+  const record = { name:state.name, email:state.email, score, total:totalQ, timestamp:Date.now(), allowRetake:false };
+  try{ await db.ref('results/'+emailKey(state.email)).set(record); }catch(e){}
+
+  if(EMAILJS_PUBLIC_KEY.indexOf("PASTE") === -1){
+    try{
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email: TEACHER_EMAIL, student_name: state.name, student_email: state.email,
+        score: score, total: totalQ
+      });
+    }catch(e){}
+  }
+  renderReview(score);
+}
+
+function renderReview(score){
+  const allQ = PAGES.flat();
+  const pct = Math.round((score/totalQ)*100);
+  let html = `<div class="score-box"><div class="num">${score} / ${totalQ}</div><p>${pct}% ${pct>=PASS_PERCENT?'✅ ناجح':'❌ راسب'}</p></div>`;
+  allQ.forEach((q,i)=>{
+    const chosen = state.answers[i], ok = chosen===q[2];
+    html += `<div class="q"><div class="qtext"><span class="badge ${ok?'ok':'bad'}">${ok?'✔ صح':'✘ غلط'}</span>${i+1}. ${q[0]}</div>`;
+    q[1].forEach((opt,oi)=>{
+      let cls="opt"; if(oi===q[2]) cls+=" correct"; else if(oi===chosen) cls+=" wrong";
+      html += `<div class="${cls}"><span>${opt}</span></div>`;
+    });
+    html += `</div>`;
+  });
+  app.innerHTML = html;
+}
+
+/* ---------------- لوحة الإدارة ---------------- */
+function renderAdminLogin(){
+  app.innerHTML = `<h1>🔐 لوحة الإدارة</h1><label>كلمة المرور</label><input id="pw" type="password"><button id="loginBtn">دخول</button>`;
+  document.getElementById("loginBtn").onclick = ()=>{
+    if(document.getElementById("pw").value === ADMIN_PASSWORD) renderAdmin();
+    else alert("كلمة مرور غلط");
+  };
+}
+
+async function renderAdmin(){
+  app.innerHTML = "<p>جاري تحميل النتائج...</p>";
+  const snap = await db.ref('results').once('value');
+  const data = snap.val() || {};
+  const rows = Object.entries(data).sort((a,b)=>b[1].timestamp-a[1].timestamp);
+  let html = `<h1>🔐 لوحة الإدارة</h1><p class="sub">إجمالي الطلبة: ${rows.length}</p>
+    <table><thead><tr><th>الاسم</th><th>الدرجة</th><th>إعادة؟</th></tr></thead><tbody>`;
+  rows.forEach(([key,r])=>{
+    html += `<tr><td>${r.name}<br><small style="color:var(--muted)">${r.email}</small></td>
+      <td>${r.score}/${r.total}</td>
+      <td>${r.allowRetake?'مسموح ✅':`<button class="small secondary" data-key="${key}">اسمح بالإعادة</button>`}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  app.innerHTML = html;
+  app.querySelectorAll('button[data-key]').forEach(b=>{
+    b.onclick = async ()=>{ await db.ref('results/'+b.dataset.key+'/allowRetake').set(true); renderAdmin(); };
+  });
+}
+
+window.addEventListener('hashchange', ()=>{
+  if(location.hash==="#admin") renderAdminLogin(); else renderRegister();
+});
+</script>
+</body>
+</html>
